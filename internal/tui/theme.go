@@ -115,7 +115,7 @@ func newStyles(t Theme) styles {
 		warning:   lipgloss.NewStyle().Foreground(t.Warning),
 		pane: lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(t.Muted).
-			Padding(1, 2),
+			BorderForeground(t.Accent).
+			Padding(0, 1),
 	}
 }

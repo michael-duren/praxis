@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -46,18 +47,18 @@ func update(m Model, msg tea.Msg) Model {
 	return next.(Model)
 }
 
-func TestTabNavigationWraps(t *testing.T) {
+func TestFocusNavigationWraps(t *testing.T) {
 	m := testModel(t)
-	if m.tab != tabSkills {
-		t.Fatalf("initial tab = %v", m.tab)
+	if m.focus != secSkills {
+		t.Fatalf("initial focus = %v", m.focus)
 	}
 	m = update(m, key("h"))
-	if m.tab != tabHarnesses {
-		t.Errorf("h from first tab should wrap to last, got %v", m.tab)
+	if m.focus != secHarnesses {
+		t.Errorf("h from first section should wrap to last, got %v", m.focus)
 	}
 	m = update(m, key("l"))
-	if m.tab != tabSkills {
-		t.Errorf("l should wrap back to first, got %v", m.tab)
+	if m.focus != secSkills {
+		t.Errorf("l should wrap back to first, got %v", m.focus)
 	}
 }
 
@@ -68,6 +69,70 @@ func TestViewShowsSkillsAndFooter(t *testing.T) {
 		if !strings.Contains(view, want) {
 			t.Errorf("view missing %q", want)
 		}
+	}
+}
+
+func TestTabBarListsAllSections(t *testing.T) {
+	m := testModel(t)
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = next.(Model)
+	view := m.View()
+	for _, want := range []string{"Skills", "Context", "Agent Skills", "Autonomy", "Harnesses"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("tab bar missing %q", want)
+		}
+	}
+	// Full-screen: the footer is pinned to the terminal's last row.
+	if lines := strings.Count(view, "\n") + 1; lines != 40 {
+		t.Errorf("view has %d lines, want exactly the terminal height 40", lines)
+	}
+}
+
+func TestScrollingKeepsCursorVisible(t *testing.T) {
+	m := testModel(t)
+	for i := range 30 {
+		if _, err := m.st.UpsertSkill(domain.UserSkill{
+			Name: fmt.Sprintf("skill-%02d", i), Category: "test", Rank: domain.RankNovice,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := m.reload(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Height 12 → paneHeight 7 visible rows for 31 skills ("go" + 30).
+	next, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 12})
+	m = next.(Model)
+	for range 20 {
+		m = update(m, key("j"))
+	}
+	if m.cursor != 20 {
+		t.Fatalf("cursor = %d, want 20", m.cursor)
+	}
+	if want := 20 - 7 + 1; m.offset != want {
+		t.Errorf("offset = %d, want %d (cursor on last visible row)", m.offset, want)
+	}
+
+	view := m.View()
+	if !strings.Contains(view, "skill-19") { // skills[20] after sorted "go"
+		t.Error("view should show the cursor row skill-19")
+	}
+	if strings.Contains(view, "skill-00") {
+		t.Error("rows above the window should be scrolled out")
+	}
+	if !strings.Contains(view, "21/31") {
+		t.Error("view should show the scroll position indicator 21/31")
+	}
+
+	// G jumps to the bottom, g back to the top.
+	m = update(m, key("G"))
+	if m.cursor != 30 || m.offset != 31-7 {
+		t.Errorf("after G: cursor=%d offset=%d, want 30/%d", m.cursor, m.offset, 31-7)
+	}
+	m = update(m, key("g"))
+	if m.cursor != 0 || m.offset != 0 {
+		t.Errorf("after g: cursor=%d offset=%d, want 0/0", m.cursor, m.offset)
 	}
 }
 
@@ -105,10 +170,10 @@ func TestRankAdjustPersists(t *testing.T) {
 
 func TestHarnessToggle(t *testing.T) {
 	m := testModel(t)
-	// Move to the Harnesses tab (last), cursor on first adapter (claude).
+	// Move focus to Harnesses (last section), cursor on first adapter (claude).
 	m = update(m, key("h"))
-	if m.tab != tabHarnesses {
-		t.Fatalf("tab = %v", m.tab)
+	if m.focus != secHarnesses {
+		t.Fatalf("focus = %v", m.focus)
 	}
 	m = update(m, key("space"))
 	enabled, err := m.st.EnabledHarnesses()
@@ -122,7 +187,7 @@ func TestHarnessToggle(t *testing.T) {
 
 func TestAutonomyCycle(t *testing.T) {
 	m := testModel(t)
-	for m.tab != tabAutonomy {
+	for m.focus != secAutonomy {
 		m = update(m, key("l"))
 	}
 	m = update(m, key("space"))

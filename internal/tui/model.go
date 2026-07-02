@@ -1,4 +1,6 @@
-// Package tui is the terminal UI for praxis, built on Bubble Tea.
+// Package tui is the terminal UI for praxis, built on Bubble Tea. One
+// tab is shown at a time in a full-screen pane; long lists scroll, with
+// the cursor kept in view and a position indicator beside the tab bar.
 package tui
 
 import (
@@ -7,6 +9,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/michael-duren/praxis/internal/domain"
 	"github.com/michael-duren/praxis/internal/harness"
@@ -14,29 +17,32 @@ import (
 	"github.com/michael-duren/praxis/internal/store"
 )
 
-type tab int
+// section identifies one tab. h/l/tab cycle through them in order.
+type section int
 
 const (
-	tabSkills tab = iota
-	tabContext
-	tabAgentSkills
-	tabAutonomy
-	tabHarnesses
-	tabCount
+	secSkills section = iota
+	secContext
+	secAgentSkills
+	secAutonomy
+	secHarnesses
+	sectionCount
 )
 
-var tabNames = [tabCount]string{"Skills", "Context", "Agent Skills", "Autonomy", "Harnesses"}
+var sectionNames = [sectionCount]string{"Skills", "Context", "Agent Skills", "Autonomy", "Harnesses"}
 
 // Model is the Bubble Tea model for the praxis TUI.
 type Model struct {
 	st       *store.Store
 	adapters []harness.Adapter
 
-	tab      tab
+	focus    section // active tab
 	cursor   int
+	offset   int // first visible row of the active tab's list
 	themeIdx int
 	styles   styles
 	width    int
+	height   int
 	status   string
 
 	skills      []domain.UserSkill
@@ -94,45 +100,88 @@ func (m *Model) reload() error {
 
 func (m Model) Init() tea.Cmd { return nil }
 
-// rowCount is how many selectable rows the current tab has.
+// rowCount is how many selectable rows the active tab has.
 func (m Model) rowCount() int {
-	switch m.tab {
-	case tabSkills:
+	switch m.focus {
+	case secSkills:
 		return len(m.skills)
-	case tabContext:
+	case secContext:
 		return len(m.entries)
-	case tabAgentSkills:
+	case secAgentSkills:
 		return len(m.agentSkills)
-	case tabAutonomy:
+	case secAutonomy:
 		return 1
-	case tabHarnesses:
+	case secHarnesses:
 		return len(m.adapters)
 	}
 	return 0
 }
 
+// effWidth/effHeight fall back to a sane size before the first
+// WindowSizeMsg arrives (also what the tests render with).
+func (m Model) effWidth() int {
+	if m.width <= 0 {
+		return 100
+	}
+	return m.width
+}
+
+func (m Model) effHeight() int {
+	if m.height <= 0 {
+		return 24
+	}
+	return m.height
+}
+
+// paneHeight is how many list rows fit in the pane: total height minus
+// header, tab bar, two border lines, and the footer.
+func (m Model) paneHeight() int {
+	return max(3, m.effHeight()-5)
+}
+
+// scroll keeps the cursor inside the visible window.
+func (m *Model) scroll() {
+	visible := m.paneHeight()
+	if m.cursor < m.offset {
+		m.offset = m.cursor
+	}
+	if m.cursor >= m.offset+visible {
+		m.offset = m.cursor - visible + 1
+	}
+	m.offset = max(0, min(m.offset, m.rowCount()-visible))
+}
+
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
+		m.width, m.height = msg.Width, msg.Height
+		m.scroll()
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "tab", "l", "right":
-			m.tab = (m.tab + 1) % tabCount
-			m.cursor = 0
+			m.focus = (m.focus + 1) % sectionCount
+			m.cursor, m.offset = 0, 0
 		case "shift+tab", "h", "left":
-			m.tab = (m.tab + tabCount - 1) % tabCount
-			m.cursor = 0
+			m.focus = (m.focus + sectionCount - 1) % sectionCount
+			m.cursor, m.offset = 0, 0
 		case "j", "down":
 			if m.cursor < m.rowCount()-1 {
 				m.cursor++
+				m.scroll()
 			}
 		case "k", "up":
 			if m.cursor > 0 {
 				m.cursor--
+				m.scroll()
 			}
+		case "g":
+			m.cursor = 0
+			m.scroll()
+		case "G":
+			m.cursor = max(0, m.rowCount()-1)
+			m.scroll()
 		case "t":
 			m.themeIdx = (m.themeIdx + 1) % len(Themes)
 			m.styles = newStyles(Themes[m.themeIdx])
@@ -152,7 +201,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // adjustRank bumps the selected skill's rank on the Skills tab.
 func (m *Model) adjustRank(delta int) {
-	if m.tab != tabSkills || m.cursor >= len(m.skills) {
+	if m.focus != secSkills || m.cursor >= len(m.skills) {
 		return
 	}
 	sk := m.skills[m.cursor]
@@ -174,8 +223,8 @@ func (m *Model) adjustRank(delta int) {
 
 // toggle flips the selected harness or cycles the autonomy mode.
 func (m *Model) toggle() {
-	switch m.tab {
-	case tabHarnesses:
+	switch m.focus {
+	case secHarnesses:
 		if m.cursor >= len(m.adapters) {
 			return
 		}
@@ -187,7 +236,7 @@ func (m *Model) toggle() {
 		if err := m.reload(); err != nil {
 			m.status = "error: " + err.Error()
 		}
-	case tabAutonomy:
+	case secAutonomy:
 		next := (m.settings.GlobalAutonomy + 1) % 3
 		if err := m.st.SaveSettings(domain.Settings{GlobalAutonomy: next}); err != nil {
 			m.status = "error: " + err.Error()
@@ -222,92 +271,174 @@ func (m *Model) sync() {
 	m.status = fmt.Sprintf("synced %d file(s)", n)
 }
 
+// window is the visible slice bounds of the active tab's list.
+func (m Model) window() (int, int) {
+	start := m.offset
+	end := min(m.rowCount(), start+m.paneHeight())
+	return start, end
+}
+
+// marker prefixes the cursor row.
+func (m Model) marker(i int) (string, lipgloss.Style) {
+	if i == m.cursor {
+		return "> ", m.styles.selected
+	}
+	return "  ", m.styles.item
+}
+
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	if maxLen <= 1 {
+		return s[:maxLen]
+	}
+	return s[:maxLen-1] + "…"
+}
+
+func (m Model) viewSkills(width int) string {
+	if len(m.skills) == 0 {
+		return m.styles.muted.Render("No skills yet — run `praxis setup` or: praxis skill add <name> <rank>")
+	}
+	// Row layout: marker(2) name(nameW) sp bar(10) sp rank(12) sp category(catW).
+	// The fixed pieces cost 27 columns; name and category share the rest.
+	budget := width - 27
+	nameW := max(12, min(28, budget-18))
+	catW := max(0, budget-nameW)
+	var b strings.Builder
+	start, end := m.window()
+	for i := start; i < end; i++ {
+		sk := m.skills[i]
+		prefix, style := m.marker(i)
+		bar := m.styles.success.Render(strings.Repeat("█", (int(sk.Rank)+1)*2)) +
+			m.styles.muted.Render(strings.Repeat("░", (4-int(sk.Rank))*2))
+		b.WriteString(style.Render(fmt.Sprintf("%s%-*s ", prefix, nameW, truncate(sk.Name, nameW))))
+		b.WriteString(bar)
+		b.WriteString(style.Render(fmt.Sprintf(" %-12s %s", sk.Rank, truncate(sk.Category, catW))))
+		b.WriteString("\n")
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+func (m Model) viewContext() string {
+	if len(m.entries) == 0 {
+		return m.styles.muted.Render("No context entries. Add one: praxis context add <title> <body>")
+	}
+	var b strings.Builder
+	start, end := m.window()
+	for i := start; i < end; i++ {
+		e := m.entries[i]
+		prefix, style := m.marker(i)
+		b.WriteString(style.Render(fmt.Sprintf("%s%-28s", prefix, truncate(e.Title, 28))))
+		b.WriteString(m.styles.muted.Render(" " + e.Scope.String()))
+		b.WriteString("\n")
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+func (m Model) viewAgentSkills() string {
+	if len(m.agentSkills) == 0 {
+		return m.styles.muted.Render("No agent skills found in harness directories.")
+	}
+	var b strings.Builder
+	start, end := m.window()
+	for i := start; i < end; i++ {
+		sk := m.agentSkills[i]
+		prefix, style := m.marker(i)
+		b.WriteString(style.Render(fmt.Sprintf("%s%-28s", prefix, truncate(sk.Name, 28))))
+		b.WriteString(m.styles.muted.Render(" " + sk.Harness))
+		b.WriteString("\n")
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+func (m Model) viewAutonomy() string {
+	prefix, style := m.marker(0)
+	var b strings.Builder
+	b.WriteString(style.Render(prefix + "global: "))
+	b.WriteString(m.styles.warning.Render(m.settings.GlobalAutonomy.String()))
+	b.WriteString("\n")
+	b.WriteString(m.styles.muted.Render("  space to cycle: manual → guided → full"))
+	b.WriteString("\n\n")
+	b.WriteString(m.styles.muted.Render("  manual: you type everything · guided: rank-based · full: agents edit freely"))
+	return b.String()
+}
+
+func (m Model) viewHarnesses() string {
+	var b strings.Builder
+	start, end := m.window()
+	for i := start; i < end; i++ {
+		a := m.adapters[i]
+		prefix, style := m.marker(i)
+		mark := m.styles.warning.Render("○ off")
+		if m.enabled[a.Name()] {
+			mark = m.styles.success.Render("● on ")
+		}
+		b.WriteString(style.Render(fmt.Sprintf("%s%-12s ", prefix, a.Name())))
+		b.WriteString(mark)
+		if a.Detect() {
+			b.WriteString(m.styles.muted.Render(" detected"))
+		}
+		b.WriteString("\n")
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+func (m Model) viewSection(width int) string {
+	switch m.focus {
+	case secSkills:
+		return m.viewSkills(width)
+	case secContext:
+		return m.viewContext()
+	case secAgentSkills:
+		return m.viewAgentSkills()
+	case secAutonomy:
+		return m.viewAutonomy()
+	case secHarnesses:
+		return m.viewHarnesses()
+	}
+	return ""
+}
+
 func (m Model) View() string {
 	s := m.styles
-	var b strings.Builder
+	width := m.effWidth()
 
-	b.WriteString(s.title.Render("praxis"))
-	b.WriteString(s.muted.Render("  — learn while you build"))
-	b.WriteString("\n\n")
+	title := s.title.Render("praxis") + s.muted.Render("  — learn while you build")
+	theme := s.muted.Render("theme: " + Themes[m.themeIdx].Name)
+	header := title + strings.Repeat(" ", max(1, width-lipgloss.Width(title)-lipgloss.Width(theme))) + theme
 
 	var tabs []string
-	for i, name := range tabNames {
-		if tab(i) == m.tab {
+	for i, name := range sectionNames {
+		if section(i) == m.focus {
 			tabs = append(tabs, s.tabActive.Render(name))
 		} else {
 			tabs = append(tabs, s.tabIdle.Render(name))
 		}
 	}
-	b.WriteString(strings.Join(tabs, " "))
-	b.WriteString("\n\n")
+	tabBar := strings.Join(tabs, " ")
+	// Scroll position indicator, right-aligned on the tab line.
+	if n := m.rowCount(); n > m.paneHeight() {
+		pos := s.muted.Render(fmt.Sprintf("%d/%d", m.cursor+1, n))
+		tabBar += strings.Repeat(" ", max(1, width-lipgloss.Width(tabBar)-lipgloss.Width(pos))) + pos
+	}
 
-	b.WriteString(s.pane.Render(m.viewTab()))
-	b.WriteString("\n")
+	// One full-screen pane for the active tab. Width/Height exclude the
+	// border (2 each); Padding(0,1) eats 2 more columns of content.
+	pane := s.pane.Width(width - 2).Height(m.paneHeight()).
+		Render(m.viewSection(width - 4))
 
+	footer := s.muted.Render("tab/h/l switch · j/k move · g/G jump · +/- rank · space toggle · s sync · t theme · q quit")
 	if m.status != "" {
-		b.WriteString(s.warning.Render(m.status))
-		b.WriteString("\n")
-	}
-	b.WriteString(s.muted.Render("h/l tabs · j/k move · +/- rank · space toggle · s sync · t theme · q quit"))
-	return b.String()
-}
-
-func (m Model) viewTab() string {
-	s := m.styles
-	var b strings.Builder
-
-	line := func(i int, text string) {
-		prefix := "  "
-		style := s.item
-		if i == m.cursor {
-			prefix = "> "
-			style = s.selected
-		}
-		b.WriteString(style.Render(prefix + text))
-		b.WriteString("\n")
+		footer = s.warning.Render(m.status) + "  " + footer
 	}
 
-	switch m.tab {
-	case tabSkills:
-		if len(m.skills) == 0 {
-			return s.muted.Render("No skills yet. Add one: praxis skill add <name> --rank <rank>")
-		}
-		for i, sk := range m.skills {
-			bar := strings.Repeat("█", int(sk.Rank)+1) + strings.Repeat("░", 4-int(sk.Rank))
-			line(i, fmt.Sprintf("%-16s %s %s  (%s)", sk.Name, bar, sk.Rank, sk.Category))
-		}
-	case tabContext:
-		if len(m.entries) == 0 {
-			return s.muted.Render("No context entries. Add one: praxis context add <title>")
-		}
-		for i, e := range m.entries {
-			line(i, fmt.Sprintf("%-24s [%s]", e.Title, e.Scope))
-		}
-	case tabAgentSkills:
-		if len(m.agentSkills) == 0 {
-			return s.muted.Render("No agent skills found in enabled harness directories.")
-		}
-		for i, sk := range m.agentSkills {
-			line(i, fmt.Sprintf("%-24s [%s]", sk.Name, sk.Harness))
-		}
-	case tabAutonomy:
-		line(0, fmt.Sprintf("Global autonomy: %s (space to cycle)", m.settings.GlobalAutonomy))
-		b.WriteString("\n")
-		b.WriteString(s.muted.Render("manual: you type everything · guided: rank-based · full: agents edit freely"))
-	case tabHarnesses:
-		for i, a := range m.adapters {
-			mark := s.warning.Render("○ disabled")
-			if m.enabled[a.Name()] {
-				mark = s.success.Render("● enabled")
-			}
-			detected := ""
-			if a.Detect() {
-				detected = " (detected)"
-			}
-			line(i, fmt.Sprintf("%-12s %s%s", a.Name(), mark, detected))
-		}
+	body := lipgloss.JoinVertical(lipgloss.Left, header, tabBar, pane)
+	// Pin the footer to the bottom row of the terminal.
+	if pad := m.effHeight() - lipgloss.Height(body) - 1; pad > 0 {
+		body += strings.Repeat("\n", pad)
 	}
-	return strings.TrimRight(b.String(), "\n")
+	return body + "\n" + footer
 }
 
 // Home returns the user's home dir, used by main to build adapters.

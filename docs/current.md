@@ -1,6 +1,6 @@
 # praxis — codebase overview
 
-*Last updated: 2026-07-02 (LDR 0002)*
+*Last updated: 2026-07-02 (LDR 0004)*
 
 Praxis manages the context files coding-agent harnesses read, so agents
 teach the user while working. State lives in SQLite; context files in each
@@ -27,7 +27,7 @@ internal/harness adapters → ~/.claude/CLAUDE.md, AGENTS.md,
 | Database schema or queries | `internal/store/store.go` (`migrate`) |
 | What the generated context doc says | `internal/orchestrator/orchestrator.go` (`Render`) |
 | Where a harness's files live / add a harness | `internal/harness/<name>.go`; register in `All()` |
-| TUI behavior/keys | `internal/tui/model.go` |
+| TUI layout/keys (full-screen dashboard) | `internal/tui/model.go` (`View`, `Update`) |
 | TUI colors/themes | `internal/tui/theme.go` (`Themes`) |
 | Web pages/markup | `internal/web/templates/app.templ`, then `make generate` |
 | Web routes/handlers | `internal/web/server.go` (`Handler`) |

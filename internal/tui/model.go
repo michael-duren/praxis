@@ -218,7 +218,9 @@ func (m Model) View() string {
 	s := m.styles
 	var b strings.Builder
 
-	b.WriteString(s.title.Render("praxis") + s.muted.Render("  — learn while you build") + "\n\n")
+	b.WriteString(s.title.Render("praxis"))
+	b.WriteString(s.muted.Render("  — learn while you build"))
+	b.WriteString("\n\n")
 
 	var tabs []string
 	for i, name := range tabNames {
@@ -228,12 +230,15 @@ func (m Model) View() string {
 			tabs = append(tabs, s.tabIdle.Render(name))
 		}
 	}
-	b.WriteString(strings.Join(tabs, " ") + "\n\n")
+	b.WriteString(strings.Join(tabs, " "))
+	b.WriteString("\n\n")
 
-	b.WriteString(s.pane.Render(m.viewTab()) + "\n")
+	b.WriteString(s.pane.Render(m.viewTab()))
+	b.WriteString("\n")
 
 	if m.status != "" {
-		b.WriteString(s.warning.Render(m.status) + "\n")
+		b.WriteString(s.warning.Render(m.status))
+		b.WriteString("\n")
 	}
 	b.WriteString(s.muted.Render("h/l tabs · j/k move · +/- rank · space toggle · s sync · t theme · q quit"))
 	return b.String()
@@ -250,7 +255,8 @@ func (m Model) viewTab() string {
 			prefix = "> "
 			style = s.selected
 		}
-		b.WriteString(style.Render(prefix+text) + "\n")
+		b.WriteString(style.Render(prefix + text))
+		b.WriteString("\n")
 	}
 
 	switch m.tab {
@@ -278,7 +284,8 @@ func (m Model) viewTab() string {
 		}
 	case tabAutonomy:
 		line(0, fmt.Sprintf("Global autonomy: %s (space to cycle)", m.settings.GlobalAutonomy))
-		b.WriteString("\n" + s.muted.Render("manual: you type everything · guided: rank-based · full: agents edit freely"))
+		b.WriteString("\n")
+		b.WriteString(s.muted.Render("manual: you type everything · guided: rank-based · full: agents edit freely"))
 	case tabHarnesses:
 		for i, a := range m.adapters {
 			mark := s.warning.Render("○ disabled")

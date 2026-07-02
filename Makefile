@@ -28,3 +28,19 @@ install: generate
 
 clean:
 	rm -rf bin
+
+gopls:
+	@command -v gopls >/dev/null 2>&1 || { \
+		echo "gopls not found — install with: go install golang.org/x/tools/gopls@latest"; \
+		exit 1; \
+	}
+	@out=$$(find . -name '*.go' \
+		-not -path './.claude/*' \
+		-not -path './bin/*' \
+		| xargs gopls check -severity=hint 2>&1); \
+	if [ -n "$$out" ]; then \
+		echo "$$out"; \
+		echo; \
+		echo "gopls reported findings — fix them before opening a PR."; \
+		exit 1; \
+	fi

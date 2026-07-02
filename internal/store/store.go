@@ -5,6 +5,7 @@ package store
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -141,7 +142,12 @@ func (s *Store) DeleteSkill(name string) error {
 
 // --- context entries ---
 
+// ErrNotFound is returned when an update or delete targets a row that
+// does not exist.
+var ErrNotFound = errors.New("not found")
+
 // UpsertContextEntry inserts (ID zero) or updates (ID set) an entry.
+// Updating a missing entry returns ErrNotFound.
 func (s *Store) UpsertContextEntry(e domain.ContextEntry) (int64, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	if e.ID == 0 {
@@ -152,9 +158,17 @@ func (s *Store) UpsertContextEntry(e domain.ContextEntry) (int64, error) {
 		}
 		return res.LastInsertId()
 	}
-	_, err := s.db.Exec(`UPDATE context_entries SET repo = ?, title = ?, body = ?, updated = ? WHERE id = ?`,
+	res, err := s.db.Exec(`UPDATE context_entries SET repo = ?, title = ?, body = ?, updated = ? WHERE id = ?`,
 		e.Scope.Repo, e.Title, e.Body, now, e.ID)
-	return e.ID, err
+	if err != nil {
+		return 0, err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return 0, err
+	} else if n == 0 {
+		return 0, fmt.Errorf("context entry %d: %w", e.ID, ErrNotFound)
+	}
+	return e.ID, nil
 }
 
 // ContextEntries returns all entries, global first, then by repo.
@@ -178,10 +192,18 @@ func (s *Store) ContextEntries() ([]domain.ContextEntry, error) {
 	return out, rows.Err()
 }
 
-// DeleteContextEntry removes an entry by ID.
+// DeleteContextEntry removes an entry by ID; ErrNotFound if it is missing.
 func (s *Store) DeleteContextEntry(id int64) error {
-	_, err := s.db.Exec(`DELETE FROM context_entries WHERE id = ?`, id)
-	return err
+	res, err := s.db.Exec(`DELETE FROM context_entries WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return fmt.Errorf("context entry %d: %w", id, ErrNotFound)
+	}
+	return nil
 }
 
 // --- harnesses ---

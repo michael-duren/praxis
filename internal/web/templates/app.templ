@@ -145,11 +145,21 @@ templ ContextCard(entries []domain.ContextEntry) {
 		<ul class="divide-y divide-slate-200 dark:divide-slate-800">
 			for _, e := range entries {
 				<li class="py-3">
-					<div class="flex items-center justify-between">
-						<span class="font-medium">{ e.Title }</span>
-						<span class="text-xs rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-slate-500">{ e.Scope.String() }</span>
-					</div>
-					<p class="text-sm text-slate-500 dark:text-slate-400 mt-1 whitespace-pre-line">{ e.Body }</p>
+					<form hx-post={ fmt.Sprintf("/context/%d", e.ID) } hx-target="body" class="space-y-2">
+						<div class="flex gap-2 items-center">
+							<input name="title" value={ e.Title } required class="flex-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-1.5 text-sm font-medium"/>
+							<input name="repo" value={ e.Scope.Repo } placeholder="repo path (empty = global)" class="flex-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-1.5 text-sm"/>
+							<button class="rounded-lg border border-ka-blue text-ka-blue px-3 py-1.5 text-sm font-semibold hover:bg-ka-blue/10">Save</button>
+							<button
+								type="button"
+								hx-post={ fmt.Sprintf("/context/%d/delete", e.ID) }
+								hx-target="body"
+								hx-confirm={ fmt.Sprintf("Delete context entry %q?", e.Title) }
+								class="rounded-lg border border-red-400 text-red-500 px-3 py-1.5 text-sm font-semibold hover:bg-red-500/10"
+							>Delete</button>
+						</div>
+						<textarea name="body" required rows="2" class="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-1.5 text-sm">{ e.Body }</textarea>
+					</form>
 				</li>
 			}
 		</ul>

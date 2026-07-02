@@ -37,15 +37,25 @@ func testModel(t *testing.T) Model {
 }
 
 func key(s string) tea.KeyMsg {
-	if s == "space" {
+	switch s {
+	case "space":
 		return tea.KeyMsg{Type: tea.KeySpace, Runes: []rune{' '}}
+	case "enter":
+		return tea.KeyMsg{Type: tea.KeyEnter}
+	case "esc":
+		return tea.KeyMsg{Type: tea.KeyEsc}
+	case "backspace":
+		return tea.KeyMsg{Type: tea.KeyBackspace}
 	}
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
 }
 
-func update(m Model, msg tea.Msg) Model {
-	next, _ := m.Update(msg)
-	return next.(Model)
+func update(m Model, msgs ...tea.Msg) Model {
+	for _, msg := range msgs {
+		next, _ := m.Update(msg)
+		m = next.(Model)
+	}
+	return m
 }
 
 func TestFocusNavigationWraps(t *testing.T) {
@@ -183,6 +193,77 @@ func TestHarnessToggle(t *testing.T) {
 	}
 	if enabled["claude"] {
 		t.Error("claude should be disabled after toggle")
+	}
+}
+
+func TestContextAddEditDelete(t *testing.T) {
+	m := testModel(t)
+	m = update(m, key("l")) // focus Context
+
+	// Add: a → title, body, empty repo.
+	m = update(m, key("a"))
+	if !m.editing {
+		t.Fatal("a should open the entry form")
+	}
+	view := m.View()
+	if !strings.Contains(view, "new context entry") {
+		t.Errorf("edit form not rendered:\n%s", view)
+	}
+	m = update(m, key("Style"))
+	m = update(m, key("enter"))
+	m = update(m, key("Prefer stdlib."))
+	m = update(m, key("enter"))
+	m = update(m, key("enter")) // empty repo = global
+	if m.editing {
+		t.Fatal("form should close after the last field")
+	}
+	entries, _ := m.st.ContextEntries()
+	if len(entries) != 1 || entries[0].Title != "Style" || !entries[0].Scope.IsGlobal() {
+		t.Fatalf("entries = %+v", entries)
+	}
+
+	// Empty title is rejected, esc cancels without saving.
+	m = update(m, key("a"))
+	m = update(m, key("enter"))
+	if !m.editing {
+		t.Fatal("empty title should keep the form open")
+	}
+	m = update(m, key("esc"))
+	entries, _ = m.st.ContextEntries()
+	if len(entries) != 1 {
+		t.Fatalf("esc should not save, entries = %+v", entries)
+	}
+
+	// Edit: prefilled title gets appended text.
+	m = update(m, key("e"))
+	m = update(m, key(" v2"))
+	m = update(m, key("enter"), key("enter"), key("enter"))
+	entries, _ = m.st.ContextEntries()
+	if entries[0].Title != "Style v2" {
+		t.Errorf("title = %q, want %q", entries[0].Title, "Style v2")
+	}
+	if entries[0].Body != "Prefer stdlib." {
+		t.Errorf("body should be preserved through edit, got %q", entries[0].Body)
+	}
+
+	// Delete needs a confirming second d.
+	m = update(m, key("d"))
+	if entries, _ := m.st.ContextEntries(); len(entries) != 1 {
+		t.Fatal("first d should not delete")
+	}
+	if !strings.Contains(m.status, "press d again") {
+		t.Errorf("status = %q", m.status)
+	}
+	m = update(m, key("d"))
+	if entries, _ := m.st.ContextEntries(); len(entries) != 0 {
+		t.Fatal("second d should delete")
+	}
+
+	// A j/k press between the two d's resets the confirmation.
+	m = update(m, key("a"), key("X"), key("enter"), key("Y"), key("enter"), key("enter"))
+	m = update(m, key("d"), key("k"), key("d"))
+	if entries, _ := m.st.ContextEntries(); len(entries) != 1 {
+		t.Error("interrupted double-d should not delete")
 	}
 }
 

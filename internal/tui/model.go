@@ -45,6 +45,17 @@ type Model struct {
 	height   int
 	status   string
 
+	// Context-entry editing (a/e on the Context tab): a three-field
+	// form (title, body, repo) filled one line at a time.
+	editing   bool
+	editNew   bool
+	editFld   int
+	editEntry domain.ContextEntry
+	editBuf   string
+
+	// d must be pressed twice on the same entry to delete it.
+	pendingDelete int64
+
 	skills      []domain.UserSkill
 	entries     []domain.ContextEntry
 	agentSkills []domain.AgentSkill
@@ -157,6 +168,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		m.scroll()
 	case tea.KeyMsg:
+		if m.editing {
+			return m.handleEditKey(msg), nil
+		}
+		if msg.String() != "d" {
+			m.pendingDelete = 0
+		}
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
@@ -192,11 +209,104 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.adjustRank(-1)
 		case " ", "enter":
 			m.toggle()
+		case "a":
+			if m.focus == secContext {
+				m.editing, m.editNew, m.editFld = true, true, 0
+				m.editEntry, m.editBuf = domain.ContextEntry{}, ""
+			}
+		case "e":
+			if m.focus == secContext && m.cursor < len(m.entries) {
+				m.editing, m.editNew, m.editFld = true, false, 0
+				m.editEntry = m.entries[m.cursor]
+				m.editBuf = m.editEntry.Title
+			}
+		case "d":
+			m.deleteContext()
 		case "s":
 			m.sync()
 		}
 	}
 	return m, nil
+}
+
+// handleEditKey runs the context-entry form: enter commits the current
+// field and advances (saving after the last), esc cancels.
+func (m Model) handleEditKey(key tea.KeyMsg) Model {
+	switch key.Type {
+	case tea.KeyEsc:
+		m.editing = false
+		m.status = "edit cancelled"
+	case tea.KeyBackspace:
+		if r := []rune(m.editBuf); len(r) > 0 {
+			m.editBuf = string(r[:len(r)-1])
+		}
+	case tea.KeySpace:
+		m.editBuf += " "
+	case tea.KeyRunes:
+		m.editBuf += string(key.Runes)
+	case tea.KeyEnter:
+		val := strings.TrimSpace(m.editBuf)
+		switch m.editFld {
+		case 0:
+			if val == "" {
+				m.status = "title is required"
+				return m
+			}
+			m.editEntry.Title = val
+			m.editFld, m.editBuf = 1, m.editEntry.Body
+		case 1:
+			if val == "" {
+				m.status = "body is required"
+				return m
+			}
+			m.editEntry.Body = val
+			m.editFld, m.editBuf = 2, m.editEntry.Scope.Repo
+		case 2:
+			m.editEntry.Scope.Repo = val
+			m.editing = false
+			if _, err := m.st.UpsertContextEntry(m.editEntry); err != nil {
+				m.status = "error: " + err.Error()
+				return m
+			}
+			if err := m.reload(); err != nil {
+				m.status = "error: " + err.Error()
+				return m
+			}
+			verb := "updated"
+			if m.editNew {
+				verb = "added"
+			}
+			m.status = fmt.Sprintf("%s context %q", verb, m.editEntry.Title)
+		}
+	}
+	return m
+}
+
+// deleteContext removes the selected entry after a confirming second d.
+func (m *Model) deleteContext() {
+	if m.focus != secContext || m.cursor >= len(m.entries) {
+		return
+	}
+	e := m.entries[m.cursor]
+	if m.pendingDelete != e.ID {
+		m.pendingDelete = e.ID
+		m.status = fmt.Sprintf("press d again to delete %q", e.Title)
+		return
+	}
+	m.pendingDelete = 0
+	if err := m.st.DeleteContextEntry(e.ID); err != nil {
+		m.status = "error: " + err.Error()
+		return
+	}
+	if err := m.reload(); err != nil {
+		m.status = "error: " + err.Error()
+		return
+	}
+	if m.cursor >= len(m.entries) && m.cursor > 0 {
+		m.cursor--
+	}
+	m.scroll()
+	m.status = fmt.Sprintf("deleted %q", e.Title)
 }
 
 // adjustRank bumps the selected skill's rank on the Skills tab.
@@ -355,9 +465,47 @@ func (m Model) viewSkills(width int) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
+// viewContextEdit renders the three-field entry form, highlighting the
+// field being typed and dimming the ones not reached yet.
+func (m Model) viewContextEdit() string {
+	s := m.styles
+	labels := [3]string{"Title:", "Body: ", "Repo: "}
+	values := [3]string{m.editEntry.Title, m.editEntry.Body, m.editEntry.Scope.Repo}
+	var b strings.Builder
+	head := "edit context entry"
+	if m.editNew {
+		head = "new context entry"
+	}
+	b.WriteString(s.title.Render(head))
+	b.WriteString("\n\n")
+	for i := range labels {
+		switch {
+		case i < m.editFld: // committed
+			b.WriteString(s.muted.Render("  " + labels[i] + " "))
+			b.WriteString(s.item.Render(values[i]))
+		case i == m.editFld: // being typed
+			b.WriteString(s.selected.Render("> " + labels[i] + " "))
+			b.WriteString(s.item.Render(m.editBuf))
+			b.WriteString(s.selected.Render("▌"))
+			if i == 2 && m.editBuf == "" {
+				b.WriteString(s.muted.Render(" (empty = global)"))
+			}
+		default: // not reached yet
+			b.WriteString(s.muted.Render("  " + labels[i] + " " + values[i]))
+		}
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
+	b.WriteString(s.muted.Render("enter next/save · esc cancel"))
+	return b.String()
+}
+
 func (m Model) viewContext() string {
+	if m.editing {
+		return m.viewContextEdit()
+	}
 	if len(m.entries) == 0 {
-		return m.styles.muted.Render("No context entries. Add one: praxis context add <title> <body>")
+		return m.styles.muted.Render("No context entries. Press a to add one.")
 	}
 	var b strings.Builder
 	start, end := m.window()
@@ -440,6 +588,20 @@ func (m Model) viewSection(width int) string {
 	return ""
 }
 
+// footerKeys is the tab-specific slice of the key help line.
+func (m Model) footerKeys() string {
+	switch m.focus {
+	case secSkills:
+		return "+/- rank"
+	case secContext:
+		return "a add · e edit · d delete"
+	case secAutonomy:
+		return "space cycle"
+	default: // agent skills, harnesses
+		return "space toggle"
+	}
+}
+
 func (m Model) View() string {
 	s := m.styles
 	width := m.effWidth()
@@ -468,7 +630,7 @@ func (m Model) View() string {
 	pane := s.pane.Width(width - 2).Height(m.paneHeight()).
 		Render(m.viewSection(width - 4))
 
-	footer := s.muted.Render("tab/h/l switch · j/k move · g/G jump · +/- rank · space toggle · s sync · t theme · q quit")
+	footer := s.muted.Render("tab/h/l switch · j/k move · g/G jump · " + m.footerKeys() + " · s sync · t theme · q quit")
 	if m.status != "" {
 		footer = s.warning.Render(m.status) + "  " + footer
 	}

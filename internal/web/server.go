@@ -3,6 +3,7 @@
 package web
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -32,6 +33,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /skills", s.handleAddSkill)
 	mux.HandleFunc("POST /skills/{name}/rank", s.handleRank)
 	mux.HandleFunc("POST /context", s.handleAddContext)
+	mux.HandleFunc("POST /context/{id}", s.handleUpdateContext)
+	mux.HandleFunc("POST /context/{id}/delete", s.handleDeleteContext)
 	mux.HandleFunc("POST /autonomy/cycle", s.handleAutonomyCycle)
 	mux.HandleFunc("POST /harness/{name}/toggle", s.handleHarnessToggle)
 	mux.HandleFunc("POST /agent-skill/{harness}/{name}/toggle", s.handleAgentSkillToggle)
@@ -150,6 +153,56 @@ func (s *Server) handleAddContext(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, r, "added context "+title)
+}
+
+// contextID parses the {id} path value, writing a 400 on failure.
+func contextID(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "bad context entry id", http.StatusBadRequest)
+		return 0, false
+	}
+	return id, true
+}
+
+// storeStatus maps store errors to HTTP codes.
+func storeStatus(err error) int {
+	if errors.Is(err, store.ErrNotFound) {
+		return http.StatusNotFound
+	}
+	return http.StatusInternalServerError
+}
+
+func (s *Server) handleUpdateContext(w http.ResponseWriter, r *http.Request) {
+	id, ok := contextID(w, r)
+	if !ok {
+		return
+	}
+	title, body := r.FormValue("title"), r.FormValue("body")
+	if title == "" || body == "" {
+		http.Error(w, "title and body are required", http.StatusBadRequest)
+		return
+	}
+	_, err := s.st.UpsertContextEntry(domain.ContextEntry{
+		ID: id, Scope: domain.Scope{Repo: r.FormValue("repo")}, Title: title, Body: body,
+	})
+	if err != nil {
+		http.Error(w, err.Error(), storeStatus(err))
+		return
+	}
+	s.render(w, r, "updated context "+title)
+}
+
+func (s *Server) handleDeleteContext(w http.ResponseWriter, r *http.Request) {
+	id, ok := contextID(w, r)
+	if !ok {
+		return
+	}
+	if err := s.st.DeleteContextEntry(id); err != nil {
+		http.Error(w, err.Error(), storeStatus(err))
+		return
+	}
+	s.render(w, r, "deleted context entry")
 }
 
 func (s *Server) handleAutonomyCycle(w http.ResponseWriter, r *http.Request) {

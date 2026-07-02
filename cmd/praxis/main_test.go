@@ -114,6 +114,47 @@ func TestContextAddRequiresBody(t *testing.T) {
 	}
 }
 
+func TestContextLifecycle(t *testing.T) {
+	t.Setenv("PRAXIS_DB", filepath.Join(t.TempDir(), "praxis.db"))
+	var buf bytes.Buffer
+
+	if err := run([]string{"context", "add", "Style", "Prefer stdlib."}, &buf); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	buf.Reset()
+	if err := run([]string{"context", "list"}, &buf); err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if !strings.Contains(buf.String(), "Style") || !strings.Contains(buf.String(), "global") {
+		t.Fatalf("list = %q", buf.String())
+	}
+
+	buf.Reset()
+	if err := run([]string{"context", "edit", "1", "Style", "Updated body.", "/home/x/repo"}, &buf); err != nil {
+		t.Fatalf("edit: %v", err)
+	}
+	buf.Reset()
+	if err := run([]string{"context", "list"}, &buf); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), "/home/x/repo") {
+		t.Errorf("edit should change scope, list = %q", buf.String())
+	}
+
+	if err := run([]string{"context", "rm", "1"}, &buf); err != nil {
+		t.Fatalf("rm: %v", err)
+	}
+	if err := run([]string{"context", "rm", "1"}, &buf); err == nil {
+		t.Error("rm of missing entry should error")
+	}
+	if err := run([]string{"context", "edit", "99", "t", "b"}, &buf); err == nil {
+		t.Error("edit of missing entry should error")
+	}
+	if err := run([]string{"context", "rm", "abc"}, &buf); err == nil {
+		t.Error("non-numeric id should error")
+	}
+}
+
 func TestHarnessEnableUnknown(t *testing.T) {
 	_, err := runCLI(t, "harness", "enable", "nope")
 	if err == nil || !strings.Contains(err.Error(), "unknown harness") {

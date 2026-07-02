@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -92,6 +93,17 @@ func TestContextEntriesCRUD(t *testing.T) {
 	entries, _ = s.ContextEntries()
 	if len(entries) != 0 {
 		t.Errorf("got %d entries after delete, want 0", len(entries))
+	}
+}
+
+func TestContextEntryNotFound(t *testing.T) {
+	s := openTestStore(t)
+
+	if _, err := s.UpsertContextEntry(domain.ContextEntry{ID: 42, Title: "x", Body: "y"}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("update missing entry: err = %v, want ErrNotFound", err)
+	}
+	if err := s.DeleteContextEntry(42); !errors.Is(err, ErrNotFound) {
+		t.Errorf("delete missing entry: err = %v, want ErrNotFound", err)
 	}
 }
 

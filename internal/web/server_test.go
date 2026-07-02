@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -92,6 +93,47 @@ func TestAddContextValidation(t *testing.T) {
 	entries, _ := s.st.ContextEntries()
 	if len(entries) != 1 || !entries[0].Scope.IsGlobal() {
 		t.Errorf("entries = %+v", entries)
+	}
+}
+
+func TestContextUpdateAndDelete(t *testing.T) {
+	s, _ := testServer(t)
+	h := s.Handler()
+
+	post(t, h, "/context", url.Values{"title": {"Style"}, "body": {"v1"}})
+	entries, _ := s.st.ContextEntries()
+	id := entries[0].ID
+
+	w := post(t, h, fmt.Sprintf("/context/%d", id), url.Values{
+		"title": {"Style"}, "body": {"v2"}, "repo": {"/home/x/repo"},
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("update status = %d: %s", w.Code, w.Body)
+	}
+	entries, _ = s.st.ContextEntries()
+	if entries[0].Body != "v2" || entries[0].Scope.Repo != "/home/x/repo" {
+		t.Errorf("entry after update = %+v", entries[0])
+	}
+
+	if w := post(t, h, fmt.Sprintf("/context/%d", id), url.Values{"title": {"x"}}); w.Code != http.StatusBadRequest {
+		t.Errorf("missing body status = %d, want 400", w.Code)
+	}
+	if w := post(t, h, "/context/abc", url.Values{"title": {"x"}, "body": {"y"}}); w.Code != http.StatusBadRequest {
+		t.Errorf("bad id status = %d, want 400", w.Code)
+	}
+	if w := post(t, h, "/context/999", url.Values{"title": {"x"}, "body": {"y"}}); w.Code != http.StatusNotFound {
+		t.Errorf("missing entry status = %d, want 404", w.Code)
+	}
+
+	if w := post(t, h, fmt.Sprintf("/context/%d/delete", id), nil); w.Code != http.StatusOK {
+		t.Fatalf("delete status = %d", w.Code)
+	}
+	entries, _ = s.st.ContextEntries()
+	if len(entries) != 0 {
+		t.Errorf("entries after delete = %+v", entries)
+	}
+	if w := post(t, h, fmt.Sprintf("/context/%d/delete", id), nil); w.Code != http.StatusNotFound {
+		t.Errorf("double delete status = %d, want 404", w.Code)
 	}
 }
 

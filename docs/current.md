@@ -1,6 +1,6 @@
 # praxis — codebase overview
 
-*Last updated: 2026-07-02 (LDR 0005)*
+*Last updated: 2026-07-02 (LDR 0006)*
 
 Praxis manages the context files coding-agent harnesses read, so agents
 teach the user while working. State lives in SQLite; context files in each

@@ -172,8 +172,17 @@ templ AgentSkillsCard(skills []domain.AgentSkill) {
 		<ul class="space-y-2">
 			for _, sk := range skills {
 				<li class="flex items-center justify-between">
-					<span class="font-medium">{ sk.Name }</span>
-					<span class="text-xs rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-slate-500">{ sk.Harness }</span>
+					<div class="flex items-center gap-2">
+						<span class="font-medium">{ sk.Name }</span>
+						<span class="text-xs rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-slate-500">{ sk.Harness }</span>
+					</div>
+					<form hx-post={ fmt.Sprintf("/agent-skill/%s/%s/toggle", sk.Harness, sk.Name) } hx-target="body">
+						if sk.Enabled {
+							<button class="rounded-full bg-ka-green/15 text-ka-green px-3 py-1 text-sm font-semibold">enabled</button>
+						} else {
+							<button class="rounded-full bg-slate-200 dark:bg-slate-800 text-slate-500 px-3 py-1 text-sm font-semibold">disabled</button>
+						}
+					</form>
 				</li>
 			}
 		</ul>

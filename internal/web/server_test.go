@@ -117,6 +117,37 @@ func TestHarnessToggleAndSync(t *testing.T) {
 	}
 }
 
+func TestAgentSkillToggle(t *testing.T) {
+	s, home := testServer(t)
+	h := s.Handler()
+	skillDir := filepath.Join(home, ".claude", "skills", "demo")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if w := post(t, h, "/agent-skill/claude/demo/toggle", nil); w.Code != http.StatusOK {
+		t.Fatalf("toggle status = %d: %s", w.Code, w.Body)
+	}
+	if _, err := os.Stat(skillDir); !os.IsNotExist(err) {
+		t.Error("skill dir should have moved to skills.disabled")
+	}
+
+	// Toggle back on.
+	if w := post(t, h, "/agent-skill/claude/demo/toggle", nil); w.Code != http.StatusOK {
+		t.Fatalf("re-toggle status = %d", w.Code)
+	}
+	if _, err := os.Stat(skillDir); err != nil {
+		t.Errorf("skill dir should be back: %v", err)
+	}
+
+	if w := post(t, h, "/agent-skill/claude/nope/toggle", nil); w.Code != http.StatusNotFound {
+		t.Errorf("unknown skill status = %d, want 404", w.Code)
+	}
+	if w := post(t, h, "/agent-skill/copilot/demo/toggle", nil); w.Code != http.StatusNotFound {
+		t.Errorf("copilot (no skills) status = %d, want 404", w.Code)
+	}
+}
+
 func TestAutonomyCycle(t *testing.T) {
 	s, _ := testServer(t)
 	post(t, s.Handler(), "/autonomy/cycle", nil)

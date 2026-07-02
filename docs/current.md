@@ -1,6 +1,6 @@
 # praxis — codebase overview
 
-*Last updated: 2026-07-02 (LDR 0004)*
+*Last updated: 2026-07-02 (LDR 0005)*
 
 Praxis manages the context files coding-agent harnesses read, so agents
 teach the user while working. State lives in SQLite; context files in each
@@ -41,9 +41,12 @@ internal/harness adapters → ~/.claude/CLAUDE.md, AGENTS.md,
   agents may do: edit files, explain first, quiz, or make the user type.
 - **Scope**: a context entry is global (empty repo path) or per-repo.
   Rendering a repo scope includes global entries too.
-- **Adapter capabilities are interfaces**: `ContextWriter`, `SkillLister`.
-  The orchestrator type-asserts, so a harness lacking a capability is
-  skipped, not special-cased.
+- **Adapter capabilities are interfaces**: `ContextWriter`, `SkillLister`,
+  `SkillToggler`. Callers type-assert, so a harness lacking a capability
+  is skipped, not special-cased.
+- **Agent skill enable/disable is filesystem state**: disabling moves the
+  skill dir to a sibling `skills.disabled/` so the harness truly stops
+  loading it; praxis stores nothing about it in the database.
 
 ## Conventions
 

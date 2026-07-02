@@ -28,6 +28,14 @@ func (c *Claude) WriteContext(scope domain.Scope, doc string) (string, error) {
 	return writeFile(path, doc)
 }
 
+func (c *Claude) skillsRoot() string {
+	return filepath.Join(c.home, ".claude", "skills")
+}
+
 func (c *Claude) ListSkills() ([]domain.AgentSkill, error) {
-	return listSkillDirs(c.Name(), filepath.Join(c.home, ".claude", "skills"))
+	return listSkills(c.Name(), c.skillsRoot())
+}
+
+func (c *Claude) SetSkillEnabled(name string, enabled bool) error {
+	return setSkillEnabled(c.skillsRoot(), name, enabled)
 }

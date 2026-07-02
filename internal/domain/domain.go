@@ -109,11 +109,14 @@ type ContextEntry struct {
 
 // AgentSkill is a skill package installed for a harness (e.g. an entry
 // under .claude/skills). Praxis lists these; harness adapters find them.
+// Enabled reflects where the skill lives on disk: a disabled skill sits
+// in the harness's skills.disabled directory, out of the agent's view.
 type AgentSkill struct {
 	Harness     string
 	Name        string
 	Description string
 	Path        string
+	Enabled     bool
 }
 
 // Settings are praxis-wide knobs.

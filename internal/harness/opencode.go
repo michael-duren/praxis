@@ -28,6 +28,14 @@ func (o *OpenCode) WriteContext(scope domain.Scope, doc string) (string, error) 
 	return writeFile(path, doc)
 }
 
+func (o *OpenCode) skillsRoot() string {
+	return filepath.Join(o.home, ".config", "opencode", "skills")
+}
+
 func (o *OpenCode) ListSkills() ([]domain.AgentSkill, error) {
-	return listSkillDirs(o.Name(), filepath.Join(o.home, ".config", "opencode", "skills"))
+	return listSkills(o.Name(), o.skillsRoot())
+}
+
+func (o *OpenCode) SetSkillEnabled(name string, enabled bool) error {
+	return setSkillEnabled(o.skillsRoot(), name, enabled)
 }

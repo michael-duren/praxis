@@ -34,6 +34,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /context", s.handleAddContext)
 	mux.HandleFunc("POST /autonomy/cycle", s.handleAutonomyCycle)
 	mux.HandleFunc("POST /harness/{name}/toggle", s.handleHarnessToggle)
+	mux.HandleFunc("POST /agent-skill/{harness}/{name}/toggle", s.handleAgentSkillToggle)
 	mux.HandleFunc("POST /sync", s.handleSync)
 	return mux
 }
@@ -177,6 +178,45 @@ func (s *Server) handleHarnessToggle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, r, "toggled "+name)
+}
+
+func (s *Server) handleAgentSkillToggle(w http.ResponseWriter, r *http.Request) {
+	harnessName, name := r.PathValue("harness"), r.PathValue("name")
+	for _, a := range s.adapters {
+		if a.Name() != harnessName {
+			continue
+		}
+		lister, ok := a.(harness.SkillLister)
+		if !ok {
+			break // harness has no skills at all → 404 below
+		}
+		skills, err := lister.ListSkills()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		for _, sk := range skills {
+			if sk.Name != name {
+				continue
+			}
+			tg, ok := a.(harness.SkillToggler)
+			if !ok {
+				http.Error(w, harnessName+" does not support toggling skills", http.StatusBadRequest)
+				return
+			}
+			if err := tg.SetSkillEnabled(name, !sk.Enabled); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			state := "disabled"
+			if !sk.Enabled {
+				state = "enabled"
+			}
+			s.render(w, r, fmt.Sprintf("%s %s (%s)", name, state, harnessName))
+			return
+		}
+	}
+	http.Error(w, "unknown agent skill", http.StatusNotFound)
 }
 
 func (s *Server) handleSync(w http.ResponseWriter, r *http.Request) {

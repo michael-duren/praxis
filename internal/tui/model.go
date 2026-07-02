@@ -221,9 +221,11 @@ func (m *Model) adjustRank(delta int) {
 	m.status = fmt.Sprintf("%s → %s", sk.Name, sk.Rank)
 }
 
-// toggle flips the selected harness or cycles the autonomy mode.
+// toggle flips the selected harness or agent skill, or cycles autonomy.
 func (m *Model) toggle() {
 	switch m.focus {
+	case secAgentSkills:
+		m.toggleAgentSkill()
 	case secHarnesses:
 		if m.cursor >= len(m.adapters) {
 			return
@@ -247,6 +249,39 @@ func (m *Model) toggle() {
 			return
 		}
 		m.status = "autonomy: " + next.String()
+	}
+}
+
+// toggleAgentSkill enables/disables the selected agent skill by moving
+// its directory via the owning adapter's SkillToggler capability.
+func (m *Model) toggleAgentSkill() {
+	if m.cursor >= len(m.agentSkills) {
+		return
+	}
+	sk := m.agentSkills[m.cursor]
+	for _, a := range m.adapters {
+		if a.Name() != sk.Harness {
+			continue
+		}
+		tg, ok := a.(harness.SkillToggler)
+		if !ok {
+			m.status = sk.Harness + " does not support toggling skills"
+			return
+		}
+		if err := tg.SetSkillEnabled(sk.Name, !sk.Enabled); err != nil {
+			m.status = "error: " + err.Error()
+			return
+		}
+		if err := m.reload(); err != nil {
+			m.status = "error: " + err.Error()
+			return
+		}
+		state := "disabled"
+		if !sk.Enabled {
+			state = "enabled"
+		}
+		m.status = fmt.Sprintf("%s %s (%s)", sk.Name, state, sk.Harness)
+		return
 	}
 }
 
@@ -345,8 +380,13 @@ func (m Model) viewAgentSkills() string {
 	for i := start; i < end; i++ {
 		sk := m.agentSkills[i]
 		prefix, style := m.marker(i)
-		b.WriteString(style.Render(fmt.Sprintf("%s%-28s", prefix, truncate(sk.Name, 28))))
-		b.WriteString(m.styles.muted.Render(" " + sk.Harness))
+		mark := m.styles.warning.Render("○ off")
+		if sk.Enabled {
+			mark = m.styles.success.Render("● on ")
+		}
+		b.WriteString(style.Render(fmt.Sprintf("%s%-28s ", prefix, truncate(sk.Name, 28))))
+		b.WriteString(mark)
+		b.WriteString(m.styles.muted.Render("  " + sk.Harness))
 		b.WriteString("\n")
 	}
 	return strings.TrimRight(b.String(), "\n")

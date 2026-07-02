@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -182,6 +183,53 @@ func TestHarnessToggle(t *testing.T) {
 	}
 	if enabled["claude"] {
 		t.Error("claude should be disabled after toggle")
+	}
+}
+
+func TestAgentSkillToggle(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "praxis.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	home := t.TempDir()
+	skillDir := filepath.Join(home, ".claude", "skills", "demo")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	m, err := New(st, harness.All(home))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.agentSkills) != 1 || !m.agentSkills[0].Enabled {
+		t.Fatalf("agentSkills = %+v, want one enabled", m.agentSkills)
+	}
+
+	m = update(m, key("l")) // Context
+	m = update(m, key("l")) // Agent Skills
+	if m.focus != secAgentSkills {
+		t.Fatalf("focus = %v", m.focus)
+	}
+	m = update(m, key("space"))
+
+	if len(m.agentSkills) != 1 || m.agentSkills[0].Enabled {
+		t.Errorf("agentSkills = %+v, want one disabled after toggle", m.agentSkills)
+	}
+	if _, err := os.Stat(skillDir); !os.IsNotExist(err) {
+		t.Error("skill dir should have moved to skills.disabled")
+	}
+	if !strings.Contains(m.status, "demo disabled") {
+		t.Errorf("status = %q", m.status)
+	}
+
+	// Toggle back on.
+	m = update(m, key("space"))
+	if !m.agentSkills[0].Enabled {
+		t.Error("skill should be enabled again")
+	}
+	if _, err := os.Stat(skillDir); err != nil {
+		t.Errorf("skill dir should be back: %v", err)
 	}
 }
 

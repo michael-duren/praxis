@@ -47,6 +47,18 @@ brew install michael-duren/praxis-brew/praxis
 Builds from source via the [praxis-brew](https://github.com/michael-duren/homebrew-praxis-brew)
 tap.
 
+### AUR (Arch Linux)
+
+```sh
+yay -S praxis-bin
+```
+
+Downloads the release binary for your architecture (x86_64/aarch64) and
+verifies it against the published checksum. PKGBUILD source lives in the
+[praxis-bin](https://aur.archlinux.org/packages/praxis-bin) AUR package
+repo; see [Publishing to the AUR](#publishing-to-the-aur) below for
+maintenance.
+
 ### Release binaries
 
 Download the binary for your platform from the
@@ -105,3 +117,22 @@ make release VERSION=vX.Y.Z   # validate, tag, push — CI builds all platforms
 
 Docs live in `docs/current.md` (codebase overview — start there) and
 `docs/ldrs/` (lightweight decision records, one per iteration).
+
+### Publishing to the AUR
+
+The PKGBUILD lives only in the `praxis-bin` AUR git repo, not in this
+source tree — same reasoning as the [praxis-brew](https://github.com/michael-duren/homebrew-praxis-brew)
+tap being a separate repo from `praxis` itself. After `make release`
+publishes a GitHub Release with linux binaries and `SHA256SUMS`:
+
+1. Clone the AUR repo (requires an AUR account and SSH key):
+   `git clone ssh://aur@aur.archlinux.org/praxis-bin.git`
+2. Bump `pkgver` in `PKGBUILD` and update `sha256sums_x86_64`/
+   `sha256sums_aarch64` from the release's `SHA256SUMS` (reset `pkgrel`
+   to `1`).
+3. Regenerate the checksum file: `makepkg --printsrcinfo > .SRCINFO`.
+4. Optionally sanity-check locally: `makepkg -f` builds the package;
+   `pacman -U praxis-bin-*.pkg.tar.zst` (or extracting the tarball and
+   running `usr/bin/praxis version` directly) confirms it works before
+   publishing.
+5. `git add -A && git commit -m "vX.Y.Z" && git push`

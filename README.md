@@ -38,6 +38,15 @@ don't know well — calibrated to your skill ranks and autonomy settings.
 
 ## Install
 
+### Homebrew
+
+```sh
+brew install michael-duren/praxis-brew/praxis
+```
+
+Builds from source via the [praxis-brew](https://github.com/michael-duren/homebrew-praxis-brew)
+tap.
+
 ### Release binaries
 
 Download the binary for your platform from the

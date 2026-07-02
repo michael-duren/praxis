@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,6 +15,37 @@ func runCLI(t *testing.T, args ...string) (string, error) {
 	var buf bytes.Buffer
 	err := run(args, &buf)
 	return buf.String(), err
+}
+
+func TestDebugDBFlag(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp) // os.TempDir() honors TMPDIR on unix
+	// The flag must win over PRAXIS_DB, so point that somewhere else.
+	t.Setenv("PRAXIS_DB", filepath.Join(t.TempDir(), "real.db"))
+
+	var buf bytes.Buffer
+	// Flag position should not matter.
+	if err := run([]string{"skill", "add", "go", "--debug-db"}, &buf); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(buf.String(), "debug db:") {
+		t.Errorf("output should announce the debug db, got %q", buf.String())
+	}
+	if _, err := os.Stat(filepath.Join(tmp, "praxis-debug.db")); err != nil {
+		t.Errorf("debug db not created in TMPDIR: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(tmp, "..", "real.db")); err == nil {
+		t.Error("PRAXIS_DB path should be untouched when --debug-db is set")
+	}
+
+	// The seeded skill is visible on a second run against the same debug db.
+	buf.Reset()
+	if err := run([]string{"--debug-db", "skill", "list"}, &buf); err != nil {
+		t.Fatalf("run list: %v", err)
+	}
+	if !strings.Contains(buf.String(), "go") {
+		t.Errorf("debug db should persist between runs, got %q", buf.String())
+	}
 }
 
 func TestVersionCommand(t *testing.T) {
@@ -45,7 +77,7 @@ func TestHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("help: %v", err)
 	}
-	for _, want := range []string{"praxis web", "skill add", "sync"} {
+	for _, want := range []string{"praxis setup", "praxis web", "skill add", "sync"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("help missing %q", want)
 		}

@@ -17,17 +17,21 @@ test: generate
 vet:
 	go vet ./...
 
+# run/web use --debug-db so local development never touches the real
+# database (~/.local/share/praxis/praxis.db). Seed it the same way, e.g.:
+#   ./bin/praxis --debug-db skill add go beginner language
 run: build
-	./$(BINARY)
+	./$(BINARY) --debug-db
 
 web: build
-	./$(BINARY) web
+	./$(BINARY) --debug-db web
 
 install: generate
 	go install ./cmd/praxis
 
 clean:
 	rm -rf bin
+	rm -f "$${TMPDIR:-/tmp}/praxis-debug.db"
 
 # Cut a release: validate, run every check CI runs, then create and push
 # an annotated v* tag. The tag push triggers .github/workflows/release.yml,

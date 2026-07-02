@@ -1,6 +1,6 @@
 # praxis — codebase overview
 
-*Last updated: 2026-07-02 (LDR 0001)*
+*Last updated: 2026-07-02 (LDR 0002)*
 
 Praxis manages the context files coding-agent harnesses read, so agents
 teach the user while working. State lives in SQLite; context files in each
@@ -32,6 +32,7 @@ internal/harness adapters → ~/.claude/CLAUDE.md, AGENTS.md,
 | Web pages/markup | `internal/web/templates/app.templ`, then `make generate` |
 | Web routes/handlers | `internal/web/server.go` (`Handler`) |
 | CLI subcommands | `cmd/praxis/cli.go` |
+| Setup wizard questions/options | `internal/setup/setup.go` (`New`) |
 
 ## Key concepts
 

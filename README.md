@@ -9,6 +9,7 @@ don't know well — calibrated to your skill ranks and autonomy settings.
 ## Usage
 
 ```sh
+praxis setup      # first-run wizard: pick skills, ranks, autonomy, harnesses
 praxis            # open the TUI
 praxis web        # serve the web UI on http://127.0.0.1:8642
 praxis help       # CLI subcommands for scripting (skill, context, harness, sync)

@@ -28,6 +28,7 @@ func (c *cli) usage() {
 
 usage:
   praxis                          open the TUI
+  praxis setup                    interactive first-run setup wizard
   praxis web [addr]               serve the web UI (default 127.0.0.1:8642)
   praxis skill add <name> [rank] [category]
   praxis skill list
@@ -37,6 +38,10 @@ usage:
   praxis harness disable <name>
   praxis sync                     write context files to enabled harnesses
   praxis version                  print version, commit, and build date
+
+flags:
+  --debug-db                      use a throwaway database ($TMPDIR/praxis-debug.db)
+                                  instead of the real one; overrides PRAXIS_DB
 `)
 }
 

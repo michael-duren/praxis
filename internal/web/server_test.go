@@ -21,7 +21,7 @@ func testServer(t *testing.T) (*Server, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { st.Close() })
+	t.Cleanup(func() { _ = st.Close() })
 	home := t.TempDir()
 	return New(st, harness.All(home)), home
 }

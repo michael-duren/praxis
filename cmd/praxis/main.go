@@ -13,6 +13,14 @@ import (
 	"github.com/michael-duren/praxis/internal/web"
 )
 
+// Build metadata, overridden at release time via
+// -ldflags "-X main.version=... -X main.commit=... -X main.date=...".
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 func main() {
 	if err := run(os.Args[1:], os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "praxis:", err)
@@ -22,6 +30,15 @@ func main() {
 
 // run dispatches CLI args. It is separated from main for testing.
 func run(args []string, out io.Writer) error {
+	// version and help need no database; handle them before opening one.
+	if len(args) > 0 {
+		switch args[0] {
+		case "version", "--version":
+			_, err := fmt.Fprintf(out, "praxis %s\ncommit:  %s\nbuilt:   %s\n", version, commit, date)
+			return err
+		}
+	}
+
 	dbPath, err := store.DefaultPath()
 	if err != nil {
 		return err
@@ -33,7 +50,7 @@ func run(args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer func() { _ = st.Close() }()
 
 	adapters := harness.All(tui.Home())
 	cli := &cli{st: st, adapters: adapters, out: out}

@@ -165,7 +165,10 @@ func (m *Model) adjustRank(delta int) {
 		m.status = "error: " + err.Error()
 		return
 	}
-	m.reload()
+	if err := m.reload(); err != nil {
+		m.status = "error: " + err.Error()
+		return
+	}
 	m.status = fmt.Sprintf("%s → %s", sk.Name, sk.Rank)
 }
 
@@ -181,14 +184,19 @@ func (m *Model) toggle() {
 			m.status = "error: " + err.Error()
 			return
 		}
-		m.reload()
+		if err := m.reload(); err != nil {
+			m.status = "error: " + err.Error()
+		}
 	case tabAutonomy:
 		next := (m.settings.GlobalAutonomy + 1) % 3
 		if err := m.st.SaveSettings(domain.Settings{GlobalAutonomy: next}); err != nil {
 			m.status = "error: " + err.Error()
 			return
 		}
-		m.reload()
+		if err := m.reload(); err != nil {
+			m.status = "error: " + err.Error()
+			return
+		}
 		m.status = "autonomy: " + next.String()
 	}
 }

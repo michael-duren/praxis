@@ -45,7 +45,7 @@ func Open(path string) (*Store, error) {
 	}
 	s := &Store{db: db}
 	if err := s.migrate(); err != nil {
-		db.Close()
+		_ = db.Close() // surface the migrate error, not the close error
 		return nil, err
 	}
 	return s, nil
@@ -115,7 +115,7 @@ func (s *Store) Skills() ([]domain.UserSkill, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list skills: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []domain.UserSkill
 	for rows.Next() {
@@ -163,7 +163,7 @@ func (s *Store) ContextEntries() ([]domain.ContextEntry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list context entries: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []domain.ContextEntry
 	for rows.Next() {
@@ -200,7 +200,7 @@ func (s *Store) EnabledHarnesses() (map[string]bool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list harnesses: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := map[string]bool{}
 	for rows.Next() {

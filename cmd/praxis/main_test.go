@@ -16,6 +16,20 @@ func runCLI(t *testing.T, args ...string) (string, error) {
 	return buf.String(), err
 }
 
+func TestVersionCommand(t *testing.T) {
+	out, err := runCLI(t, "version")
+	if err != nil {
+		t.Fatalf("version: %v", err)
+	}
+	// Field alignment matters: release.yml's sanity check greps for
+	// "commit:  " (two spaces) and "built:   " (three spaces).
+	for _, want := range []string{"praxis dev", "commit:  none", "built:   unknown"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("version output missing %q:\n%s", want, out)
+		}
+	}
+}
+
 func TestUnknownCommand(t *testing.T) {
 	out, err := runCLI(t, "bogus")
 	if err == nil {

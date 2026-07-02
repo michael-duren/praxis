@@ -18,7 +18,7 @@ func testModel(t *testing.T) Model {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { st.Close() })
+	t.Cleanup(func() { _ = st.Close() })
 
 	if _, err := st.UpsertSkill(domain.UserSkill{Name: "go", Category: "language", Rank: domain.RankBeginner}); err != nil {
 		t.Fatal(err)

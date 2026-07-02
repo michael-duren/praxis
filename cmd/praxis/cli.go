@@ -17,8 +17,14 @@ type cli struct {
 	out      io.Writer
 }
 
+// printf writes CLI output. A failed write to the output stream is not
+// actionable here, so the error is deliberately discarded (errcheck-clean).
+func (c *cli) printf(format string, args ...any) {
+	_, _ = fmt.Fprintf(c.out, format, args...)
+}
+
 func (c *cli) usage() {
-	fmt.Fprint(c.out, `praxis — learn while you build
+	c.printf(`praxis — learn while you build
 
 usage:
   praxis                          open the TUI
@@ -30,6 +36,7 @@ usage:
   praxis harness enable <name>
   praxis harness disable <name>
   praxis sync                     write context files to enabled harnesses
+  praxis version                  print version, commit, and build date
 `)
 }
 
@@ -56,7 +63,7 @@ func (c *cli) skill(args []string) error {
 		if _, err := c.st.UpsertSkill(sk); err != nil {
 			return err
 		}
-		fmt.Fprintf(c.out, "added %s (%s)\n", sk.Name, sk.Rank)
+		c.printf("added %s (%s)\n", sk.Name, sk.Rank)
 		return nil
 	case "list":
 		skills, err := c.st.Skills()
@@ -64,7 +71,7 @@ func (c *cli) skill(args []string) error {
 			return err
 		}
 		for _, sk := range skills {
-			fmt.Fprintf(c.out, "%-16s %-12s %s\n", sk.Name, sk.Rank, sk.Category)
+			c.printf("%-16s %-12s %s\n", sk.Name, sk.Rank, sk.Category)
 		}
 		return nil
 	}
@@ -85,7 +92,7 @@ func (c *cli) context(args []string) error {
 	if _, err := c.st.UpsertContextEntry(e); err != nil {
 		return err
 	}
-	fmt.Fprintf(c.out, "added context %q (%s)\n", e.Title, e.Scope)
+	c.printf("added context %q (%s)\n", e.Title, e.Scope)
 	return nil
 }
 
@@ -108,7 +115,7 @@ func (c *cli) harness(args []string) error {
 			if a.Detect() {
 				detected = " (detected)"
 			}
-			fmt.Fprintf(c.out, "%-12s %s%s\n", a.Name(), state, detected)
+			c.printf("%-12s %s%s\n", a.Name(), state, detected)
 		}
 		return nil
 	case "enable", "disable":
@@ -121,7 +128,7 @@ func (c *cli) harness(args []string) error {
 		if err := c.st.SetHarnessEnabled(args[1], args[0] == "enable"); err != nil {
 			return err
 		}
-		fmt.Fprintf(c.out, "%s %sd\n", args[1], args[0])
+		c.printf("%s %sd\n", args[1], args[0])
 		return nil
 	}
 	return fmt.Errorf("harness: unknown subcommand %q", args[0])
@@ -163,13 +170,13 @@ func (c *cli) sync() error {
 	for scope := range scopes {
 		for _, r := range orchestrator.Sync(st, scope, c.adapters, enabled) {
 			if r.Err != nil {
-				fmt.Fprintf(c.out, "ERROR %s (%s): %v\n", r.Harness, r.Scope, r.Err)
+				c.printf("ERROR %s (%s): %v\n", r.Harness, r.Scope, r.Err)
 				if firstErr == nil {
 					firstErr = r.Err
 				}
 				continue
 			}
-			fmt.Fprintf(c.out, "wrote %s\n", r.Path)
+			c.printf("wrote %s\n", r.Path)
 		}
 	}
 	return firstErr

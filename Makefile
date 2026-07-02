@@ -1,4 +1,4 @@
-.PHONY: all build generate test vet run web install clean
+.PHONY: all build generate test vet run web install clean release
 
 BINARY := bin/praxis
 
@@ -28,6 +28,30 @@ install: generate
 
 clean:
 	rm -rf bin
+
+# Cut a release: validate, run every check CI runs, then create and push
+# an annotated v* tag. The tag push triggers .github/workflows/release.yml,
+# which cross-compiles all platforms and publishes the GitHub Release.
+#
+#   make release VERSION=v0.2.0
+release:
+	@test -n "$(VERSION)" || { echo "usage: make release VERSION=vX.Y.Z"; exit 1; }
+	@echo "$(VERSION)" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$$' \
+		|| { echo "VERSION must be semver, e.g. v0.2.0 or v0.2.0-rc.1"; exit 1; }
+	@git rev-parse --verify --quiet "refs/tags/$(VERSION)" >/dev/null \
+		&& { echo "tag $(VERSION) already exists"; exit 1; } || true
+	@test "$$(git branch --show-current)" = "main" \
+		|| { echo "releases are cut from main (currently on $$(git branch --show-current))"; exit 1; }
+	@test -z "$$(git status --porcelain)" \
+		|| { echo "working tree is dirty — commit or stash first"; git status --short; exit 1; }
+	@git fetch --quiet origin main
+	@test "$$(git rev-parse HEAD)" = "$$(git rev-parse origin/main)" \
+		|| { echo "main is not in sync with origin/main — push or pull first"; exit 1; }
+	$(MAKE) all vet gopls
+	git tag -a "$(VERSION)" -m "praxis $(VERSION)"
+	git push origin "$(VERSION)"
+	@echo "Pushed $(VERSION). The Release workflow is now building all platforms:"
+	@echo "  gh run watch --repo $$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || echo '<owner>/<repo>')"
 
 gopls:
 	@command -v gopls >/dev/null 2>&1 || { \

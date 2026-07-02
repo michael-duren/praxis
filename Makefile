@@ -1,4 +1,4 @@
-.PHONY: all help build generate test vet lint fmt cover tidy run web setup seed install clean release gopls ci
+.PHONY: all help build generate test vet lint fmt cover tidy run web setup seed seed-clean install clean release gopls ci
 
 BINARY := bin/praxis
 
@@ -48,13 +48,11 @@ web: build ## serve the web UI against the debug database
 setup: build ## run the first-run setup wizard against the debug database
 	./$(BINARY) --debug-db setup
 
-seed: build ## fill the debug database with sample skills and context
-	./$(BINARY) --debug-db skill add go beginner language
-	./$(BINARY) --debug-db skill add typescript advanced language
-	./$(BINARY) --debug-db skill add kubernetes novice technology
-	./$(BINARY) --debug-db skill add distributed-systems intermediate system-design
-	./$(BINARY) --debug-db context add "Style" "Prefer stdlib. Table tests."
-	./$(BINARY) --debug-db skill list
+seed: build ## seed the debug db + demo agent skills with rich dev data
+	./scripts/seed-dev.sh
+
+seed-clean: ## remove seeded dev data (debug db + demo-* agent skills)
+	./scripts/seed-dev.sh --clean
 
 install: generate ## go install the praxis binary
 	go install ./cmd/praxis

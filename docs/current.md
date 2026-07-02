@@ -1,6 +1,6 @@
 # praxis — codebase overview
 
-*Last updated: 2026-07-02 (LDR 0006)*
+*Last updated: 2026-07-02 (LDR 0007)*
 
 Praxis manages the context files coding-agent harnesses read, so agents
 teach the user while working. State lives in SQLite; context files in each
@@ -52,5 +52,8 @@ internal/harness adapters → ~/.claude/CLAUDE.md, AGENTS.md,
 
 - Every `.go` file has a `_test.go` next to it; tests use `t.TempDir()`
   (never the real home dir or DB).
-- `PRAXIS_DB` overrides the database path.
+- `PRAXIS_DB` overrides the database path; `--debug-db` beats both and
+  uses `$TMPDIR/praxis-debug.db`.
+- `make seed` fills the debug db and harness dirs with demo data (all
+  marked fictional so agents ignore it); `make seed-clean` removes it.
 - `make` = generate + build + test. templ output (`*_templ.go`) is checked in.

@@ -11,9 +11,12 @@ Context entries can now be edited and deleted from all three surfaces:
 - **Web**: each entry renders as an inline form (title/repo/body) with
   Save and Delete (with `hx-confirm`) — `POST /context/{id}` and
   `POST /context/{id}/delete`.
-- **TUI**: on the Context tab, `a` adds, `e` edits, `d` (pressed twice on
-  the same entry) deletes. Add/edit is a three-field form filled one line
-  at a time (title → body → repo, empty repo = global).
+- **TUI**: on the Context tab, `enter` opens a read-only detail view of
+  the selected entry (full body word-wrapped, scope, updated time; `j`/`k`
+  flip entries, `e` jumps to editing, `esc`/`q` close), `a` adds, `e`
+  edits, `d` (pressed twice on the same entry) deletes. Add/edit is a
+  three-field form filled one line at a time (title → body → repo, empty
+  repo = global).
 
 ## Why / key decisions
 

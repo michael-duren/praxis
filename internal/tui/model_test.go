@@ -267,6 +267,63 @@ func TestContextAddEditDelete(t *testing.T) {
 	}
 }
 
+func TestContextDetailView(t *testing.T) {
+	m := testModel(t)
+	for _, e := range []domain.ContextEntry{
+		{Title: "First", Body: "Body of the first entry."},
+		{Title: "Second", Body: "Body of the second entry."},
+	} {
+		if _, err := m.st.UpsertContextEntry(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := m.reload(); err != nil {
+		t.Fatal(err)
+	}
+
+	m = update(m, key("l")) // focus Context
+	view := m.View()
+	if strings.Contains(view, "Body of the first entry.") {
+		t.Fatal("list view should not show bodies")
+	}
+
+	m = update(m, key("enter"))
+	if !m.viewing {
+		t.Fatal("enter should open the detail view")
+	}
+	view = m.View()
+	if !strings.Contains(view, "Body of the first entry.") {
+		t.Errorf("detail view missing body:\n%s", view)
+	}
+	if !strings.Contains(view, "1/2") {
+		t.Error("detail view missing position 1/2")
+	}
+
+	// j flips to the next entry without leaving the detail view.
+	m = update(m, key("j"))
+	if !m.viewing {
+		t.Fatal("j should keep the detail view open")
+	}
+	if !strings.Contains(m.View(), "Body of the second entry.") {
+		t.Error("j should show the next entry's body")
+	}
+
+	// q closes the view without quitting the app.
+	m = update(m, key("q"))
+	if m.viewing {
+		t.Error("q should close the detail view")
+	}
+
+	// e from the detail view opens the editor prefilled.
+	m = update(m, key("enter"), key("e"))
+	if m.viewing || !m.editing {
+		t.Fatalf("e should switch from viewing to editing (viewing=%v editing=%v)", m.viewing, m.editing)
+	}
+	if m.editBuf != "Second" {
+		t.Errorf("editBuf = %q, want prefilled %q", m.editBuf, "Second")
+	}
+}
+
 func TestAgentSkillToggle(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "praxis.db"))
 	if err != nil {

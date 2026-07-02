@@ -56,6 +56,10 @@ type Model struct {
 	// d must be pressed twice on the same entry to delete it.
 	pendingDelete int64
 
+	// viewing shows the selected context entry's full body (enter on
+	// the Context tab); j/k flip entries, e edits, esc closes.
+	viewing bool
+
 	skills      []domain.UserSkill
 	entries     []domain.ContextEntry
 	agentSkills []domain.AgentSkill
@@ -171,6 +175,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.editing {
 			return m.handleEditKey(msg), nil
 		}
+		if m.viewing {
+			return m.handleViewKey(msg), nil
+		}
 		if msg.String() != "d" {
 			m.pendingDelete = 0
 		}
@@ -208,7 +215,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "-":
 			m.adjustRank(-1)
 		case " ", "enter":
-			m.toggle()
+			if m.focus == secContext {
+				if m.cursor < len(m.entries) {
+					m.viewing = true
+				}
+			} else {
+				m.toggle()
+			}
 		case "a":
 			if m.focus == secContext {
 				m.editing, m.editNew, m.editFld = true, true, 0
@@ -227,6 +240,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// handleViewKey drives the context detail view: j/k flip entries, e
+// jumps into editing the shown entry, anything closing-ish closes.
+func (m Model) handleViewKey(key tea.KeyMsg) Model {
+	switch key.String() {
+	case "j", "down":
+		if m.cursor < len(m.entries)-1 {
+			m.cursor++
+			m.scroll()
+		}
+	case "k", "up":
+		if m.cursor > 0 {
+			m.cursor--
+			m.scroll()
+		}
+	case "e":
+		if m.cursor < len(m.entries) {
+			m.viewing = false
+			m.editing, m.editNew, m.editFld = true, false, 0
+			m.editEntry = m.entries[m.cursor]
+			m.editBuf = m.editEntry.Title
+		}
+	case "esc", "enter", "q", " ":
+		m.viewing = false
+	}
+	return m
 }
 
 // handleEditKey runs the context-entry form: enter commits the current
@@ -500,9 +540,28 @@ func (m Model) viewContextEdit() string {
 	return b.String()
 }
 
-func (m Model) viewContext() string {
+// viewContextDetail is the read-only full view of one entry.
+func (m Model) viewContextDetail(width int) string {
+	s := m.styles
+	e := m.entries[m.cursor]
+	var b strings.Builder
+	b.WriteString(s.title.Render(e.Title))
+	b.WriteString("\n")
+	meta := fmt.Sprintf("%s · updated %s · %d/%d", e.Scope, e.Updated.Format("2006-01-02 15:04"), m.cursor+1, len(m.entries))
+	b.WriteString(s.muted.Render(meta))
+	b.WriteString("\n\n")
+	b.WriteString(m.styles.item.Width(width).Render(e.Body))
+	b.WriteString("\n\n")
+	b.WriteString(s.muted.Render("j/k next/prev · e edit · esc close"))
+	return b.String()
+}
+
+func (m Model) viewContext(width int) string {
 	if m.editing {
 		return m.viewContextEdit()
+	}
+	if m.viewing && m.cursor < len(m.entries) {
+		return m.viewContextDetail(width)
 	}
 	if len(m.entries) == 0 {
 		return m.styles.muted.Render("No context entries. Press a to add one.")
@@ -577,7 +636,7 @@ func (m Model) viewSection(width int) string {
 	case secSkills:
 		return m.viewSkills(width)
 	case secContext:
-		return m.viewContext()
+		return m.viewContext(width)
 	case secAgentSkills:
 		return m.viewAgentSkills()
 	case secAutonomy:
@@ -594,7 +653,7 @@ func (m Model) footerKeys() string {
 	case secSkills:
 		return "+/- rank"
 	case secContext:
-		return "a add · e edit · d delete"
+		return "enter view · a add · e edit · d delete"
 	case secAutonomy:
 		return "space cycle"
 	default: // agent skills, harnesses

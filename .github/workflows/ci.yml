@@ -1,0 +1,45 @@
+name: CI
+
+# Run on every push and on every pull request so regressions are caught
+# before a branch is merged.
+on:
+  push:
+  pull_request:
+
+# Cancel an in-progress run when the same ref is pushed again.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Pinned to the version declared in go.mod.
+  GO_VERSION: "1.26.3"
+
+jobs:
+  go:
+    name: Go (build, lint, test)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          # Caches the module download and build caches keyed on go.sum.
+          cache: true
+
+      # Build first: the acceptance suite compiles and runs the real binary,
+      # so a compile failure should surface here before the test step.
+      - name: Build
+        run: go build ./...
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@82606bf257cbaff209d206a39f5134f0cfbfd2ee # v9.2.1
+        with:
+          version: v2.12.2
+
+      # Run after the build step so acceptance tests have a buildable tree.
+      - name: Test
+        run: go test ./...

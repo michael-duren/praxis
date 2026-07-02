@@ -1,0 +1,205 @@
+// Package templates holds the templ components for the praxis web UI.
+// Run `make generate` (templ generate) after editing this file.
+package templates
+
+import (
+	"fmt"
+	"github.com/michael-duren/praxis/internal/domain"
+)
+
+// HarnessRow pairs an adapter's name with its state for rendering.
+type HarnessRow struct {
+	Name     string
+	Enabled  bool
+	Detected bool
+}
+
+// ViewData is everything the dashboard needs.
+type ViewData struct {
+	Skills      []domain.UserSkill
+	Entries     []domain.ContextEntry
+	AgentSkills []domain.AgentSkill
+	Harnesses   []HarnessRow
+	Settings    domain.Settings
+	Status      string
+}
+
+templ Layout(title string) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ title }</title>
+			<script src="https://unpkg.com/htmx.org@1.9.12"></script>
+			<script src="https://cdn.tailwindcss.com"></script>
+			<script>
+				tailwind.config = {
+					darkMode: 'class',
+					theme: { extend: { colors: { ka: { blue: '#1865f2', green: '#00a60e', dark: '#0b1220' } } } }
+				};
+				if (localStorage.theme === 'dark') document.documentElement.classList.add('dark');
+				function toggleTheme() {
+					const el = document.documentElement;
+					el.classList.toggle('dark');
+					localStorage.theme = el.classList.contains('dark') ? 'dark' : 'light';
+				}
+			</script>
+		</head>
+		<body class="bg-slate-50 text-slate-900 dark:bg-ka-dark dark:text-slate-100 min-h-screen font-sans">
+			<header class="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
+				<div class="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+					<h1 class="text-xl font-bold text-ka-blue">praxis</h1>
+					<div class="flex items-center gap-3">
+						<span class="text-sm text-slate-500 dark:text-slate-400">learn while you build</span>
+						<button onclick="toggleTheme()" class="rounded-full border border-slate-300 dark:border-slate-700 px-3 py-1 text-sm hover:bg-slate-100 dark:hover:bg-slate-800">☀/☾</button>
+					</div>
+				</div>
+			</header>
+			<main class="max-w-5xl mx-auto px-6 py-8 space-y-8">
+				{ children... }
+			</main>
+		</body>
+	</html>
+}
+
+templ Dashboard(d ViewData) {
+	@Layout("praxis") {
+		if d.Status != "" {
+			<div class="rounded-lg bg-ka-blue/10 text-ka-blue px-4 py-2 text-sm">{ d.Status }</div>
+		}
+		<div class="grid md:grid-cols-2 gap-8">
+			@SkillsCard(d.Skills)
+			@AutonomyCard(d.Settings)
+		</div>
+		@ContextCard(d.Entries)
+		<div class="grid md:grid-cols-2 gap-8">
+			@AgentSkillsCard(d.AgentSkills)
+			@HarnessesCard(d.Harnesses)
+		</div>
+		<form hx-post="/sync" hx-target="body">
+			<button class="rounded-lg bg-ka-blue text-white px-5 py-2 font-semibold hover:bg-blue-700">
+				Sync context to harnesses
+			</button>
+		</form>
+	}
+}
+
+templ card(title string) {
+	<section class="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-6 space-y-4">
+		<h2 class="text-lg font-bold">{ title }</h2>
+		{ children... }
+	</section>
+}
+
+templ SkillsCard(skills []domain.UserSkill) {
+	@card("Your skills") {
+		if len(skills) == 0 {
+			<p class="text-sm text-slate-500">No skills yet — add one below.</p>
+		}
+		<ul class="space-y-3">
+			for _, sk := range skills {
+				<li class="flex items-center gap-3">
+					<span class="w-28 font-medium">{ sk.Name }</span>
+					<div class="flex-1 h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+						<div class="h-full bg-ka-green" style={ fmt.Sprintf("width: %d%%", (int(sk.Rank)+1)*20) }></div>
+					</div>
+					<span class="w-28 text-sm text-slate-500">{ sk.Rank.String() }</span>
+					<form hx-post={ fmt.Sprintf("/skills/%s/rank?delta=1", sk.Name) } hx-target="body">
+						<button class="px-2 rounded border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800">+</button>
+					</form>
+					<form hx-post={ fmt.Sprintf("/skills/%s/rank?delta=-1", sk.Name) } hx-target="body">
+						<button class="px-2 rounded border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800">−</button>
+					</form>
+				</li>
+			}
+		</ul>
+		<form hx-post="/skills" hx-target="body" class="flex gap-2 pt-2">
+			<input name="name" required placeholder="skill (e.g. go, k8s)" class="flex-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-1.5 text-sm"/>
+			<input name="category" placeholder="category" class="w-32 rounded-lg border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-1.5 text-sm"/>
+			<button class="rounded-lg bg-ka-blue text-white px-4 py-1.5 text-sm font-semibold hover:bg-blue-700">Add</button>
+		</form>
+	}
+}
+
+templ AutonomyCard(s domain.Settings) {
+	@card("Autonomy & explanation") {
+		<p class="text-sm text-slate-500 dark:text-slate-400">
+			Controls how much agents do on their own. In <b>manual</b> you type all code yourself;
+			<b>guided</b> adapts to each skill's rank; <b>full</b> lets agents edit freely.
+		</p>
+		<div class="flex items-center gap-4">
+			<span class="text-2xl font-bold text-ka-blue">{ s.GlobalAutonomy.String() }</span>
+			<form hx-post="/autonomy/cycle" hx-target="body">
+				<button class="rounded-lg border border-ka-blue text-ka-blue px-4 py-1.5 text-sm font-semibold hover:bg-ka-blue/10">Change</button>
+			</form>
+		</div>
+	}
+}
+
+templ ContextCard(entries []domain.ContextEntry) {
+	@card("Context") {
+		if len(entries) == 0 {
+			<p class="text-sm text-slate-500">No context entries yet — these become your AGENTS.md / CLAUDE.md sections.</p>
+		}
+		<ul class="divide-y divide-slate-200 dark:divide-slate-800">
+			for _, e := range entries {
+				<li class="py-3">
+					<div class="flex items-center justify-between">
+						<span class="font-medium">{ e.Title }</span>
+						<span class="text-xs rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-slate-500">{ e.Scope.String() }</span>
+					</div>
+					<p class="text-sm text-slate-500 dark:text-slate-400 mt-1 whitespace-pre-line">{ e.Body }</p>
+				</li>
+			}
+		</ul>
+		<form hx-post="/context" hx-target="body" class="space-y-2 pt-2">
+			<div class="flex gap-2">
+				<input name="title" required placeholder="title" class="flex-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-1.5 text-sm"/>
+				<input name="repo" placeholder="repo path (empty = global)" class="flex-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-1.5 text-sm"/>
+			</div>
+			<textarea name="body" required placeholder="context body (markdown)" rows="2" class="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-transparent px-3 py-1.5 text-sm"></textarea>
+			<button class="rounded-lg bg-ka-blue text-white px-4 py-1.5 text-sm font-semibold hover:bg-blue-700">Add context</button>
+		</form>
+	}
+}
+
+templ AgentSkillsCard(skills []domain.AgentSkill) {
+	@card("Agent skills") {
+		if len(skills) == 0 {
+			<p class="text-sm text-slate-500">No agent skills found in harness directories.</p>
+		}
+		<ul class="space-y-2">
+			for _, sk := range skills {
+				<li class="flex items-center justify-between">
+					<span class="font-medium">{ sk.Name }</span>
+					<span class="text-xs rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-slate-500">{ sk.Harness }</span>
+				</li>
+			}
+		</ul>
+	}
+}
+
+templ HarnessesCard(rows []HarnessRow) {
+	@card("Enabled harnesses") {
+		<ul class="space-y-3">
+			for _, h := range rows {
+				<li class="flex items-center justify-between">
+					<div class="flex items-center gap-2">
+						<span class="font-medium">{ h.Name }</span>
+						if h.Detected {
+							<span class="text-xs text-ka-green">detected</span>
+						}
+					</div>
+					<form hx-post={ fmt.Sprintf("/harness/%s/toggle", h.Name) } hx-target="body">
+						if h.Enabled {
+							<button class="rounded-full bg-ka-green/15 text-ka-green px-3 py-1 text-sm font-semibold">enabled</button>
+						} else {
+							<button class="rounded-full bg-slate-200 dark:bg-slate-800 text-slate-500 px-3 py-1 text-sm font-semibold">disabled</button>
+						}
+					</form>
+				</li>
+			}
+		</ul>
+	}
+}

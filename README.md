@@ -6,6 +6,8 @@ copilot-instructions.md, ...) so that agents explain their reasoning, have you
 type code yourself when you're still learning, and quiz you on subjects you
 don't know well — calibrated to your skill ranks and autonomy settings.
 
+![setup praxis](./docs/img/setup.gif)
+
 ## Features
 
 - **User skills with ranks** — track what you're learning (languages,
